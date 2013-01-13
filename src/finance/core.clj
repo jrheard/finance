@@ -1,8 +1,8 @@
 (ns finance.core
-  "Tells me how much money I spend per year vs how much money I earn per year."
+  "Tells me how much money I earned/spent in 2012."
   (:require [clojure.data.csv :as csv]
             [clojure.java.io :as io]
-            [clojure.set :refer [difference]]
+            [clojure.set]
             [clj-time.coerce :refer [to-long]]
             [clj-time.core :refer [date-time]]
             [clj-time.format :refer [parse formatter]]))
@@ -26,8 +26,14 @@
                          (parse-date date)
                          (date-time 2012 12 31)])))
 
-(defn -main [& args]
+(def income-categories #{"Income", "Transfer", "Paycheck"})
+
+(defn get-income-and-spending []
   (let [transactions (into #{}  (filter #(valid-date (% "Date")) (get-transactions)))
-        income (into #{} (filter #(= "Income" (get % "Category")) transactions))
-        spending (difference transactions income)]
-    (prn (take 100 (map #(select-keys % ["Amount" "Description"]) income)))))
+        income (into #{} (filter #(income-categories (get % "Category")) transactions))
+        spending (clojure.set/difference transactions income)]
+    [income spending]))
+
+(defn -main [& args]
+  (let [[income spending] (get-income-and-spending)]
+    (reduce + (map #(Float/parseFloat (get % "Amount")) spending))))
