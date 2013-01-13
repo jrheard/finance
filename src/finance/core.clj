@@ -46,14 +46,17 @@
     (not (= (get transaction "Category")
             "Credit Card Payment"))))
 
+(defn set-of [pred xs]
+  (into #{} (filter pred xs)))
+
 (defn get-income-and-spending []
-  (let [transactions (into #{} (filter #(valid-date (% "Date")) (get-transactions)))
-        income (into #{} (filter income? transactions))
+  (let [transactions (set-of #(valid-date (% "Date")) (get-transactions))
+        income (set-of income? transactions)
         spending (clojure.set/difference transactions
                                          income
-                                         (into #{} (filter #(or (ignorable? %)
-                                                                (credit-card-dupe? %))
-                                                           transactions)))]
+                                         (set-of #(or (ignorable? %)
+                                                      (credit-card-dupe? %))
+                                                 transactions))]
     [income spending]))
 
 (defn group-transactions
