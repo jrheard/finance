@@ -33,12 +33,27 @@
   [date]
   (apply < (map to-long [(date-time 2012 01 01) date (date-time 2012 12 31)])))
 
-(def income-categories #{"Income", "Transfer", "Paycheck"})
+(defn make-transaction-filter [field values]
+  (fn [transaction]
+    (some #(re-seq % (get transaction field))
+          values)))
+
+(def income? (make-transaction-filter "Category" [#"Income" #"Transfer" #"Paycheck"]))
+(def ignorable? (make-transaction-filter "Description" [#"Vanguard" #"Check 7.*" #"Transfer to CREDIT CARD" #"Vgi Prime Mm" #"Vgilifest Gro"]))
+
+(defn credit-card-dupe? [transaction]
+  (when ((make-transaction-filter "Account Name" [#"CREDIT CARD"]) transaction)
+    (not (= (get transaction "Category")
+            "Credit Card Payment"))))
 
 (defn get-income-and-spending []
   (let [transactions (into #{} (filter #(valid-date (% "Date")) (get-transactions)))
-        income (into #{} (filter #(income-categories (get % "Category")) transactions))
-        spending (clojure.set/difference transactions income)]
+        income (into #{} (filter income? transactions))
+        spending (clojure.set/difference transactions
+                                         income
+                                         (into #{} (filter #(or (ignorable? %)
+                                                                (credit-card-dupe? %))
+                                                           transactions)))]
     [income spending]))
 
 (defn group-transactions
@@ -50,6 +65,14 @@
                  [(get k field) (reduce + (map #(get % "Amount") ts))])
                grouped)))))
 
+(defn sort-transactions [grouped-transactions]
+  (reverse (sort-by (fn [[k v]] v) grouped-transactions)))
+
+(defn sum-transactions [grouped-transactions]
+  (reduce + (map second grouped-transactions)))
+
 (defn -main [& args]
   (let [[income spending] (get-income-and-spending)]
-    (reverse (sort-by (fn [[k v]] v) (group-transactions income)))))
+    (println (apply -
+                    (map (comp sum-transactions group-transactions)
+                         [income spending])))))
