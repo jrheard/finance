@@ -5,6 +5,8 @@
 ;; is that it isn't always great at answering the kinds of questions I want to ask
 ;; about that data. I'm limited to only ever receiving answers to the questions that
 ;; Mint's engineers get around to answering. This program provides some of those missing answers.
+;;
+;; The program expects a Mint transactions .csv dump to exist at `resources/transactions.csv`.
 
 (ns finance.core
   (:require [clojure.data.csv :as csv]
@@ -15,13 +17,16 @@
             [clj-time.format :refer [parse formatter]]))
 
 ;; ## Parsers
-;; Transactions come in as maps of {string -> string};
-;; these guys help transform those maps into maps with more usefully typed data.
+;; Transactions come in as maps like this:
+;;
+;; `{"Account Name" "CREDIT CARD", "Category" "Pharmacy", "Amount" "17.39", "Descripton" "Walgreens", "Date" "1/11/2013"}`
+;;
+;; These parsers help transform those stringy maps into maps with more usefully typed data.
 
 (defn parse-date
   "Takes a string of the format '1/11/2013', returns a DateTime instance."
-  [date-str]
-  (parse (formatter "MM/dd/yyyy") date-str))
+  [s]
+  (parse (formatter "MM/dd/yyyy") s))
 
 (defn parse-transaction
   "Takes a map of {string -> string}, returns a parsed transaction map."
@@ -41,7 +46,6 @@
 ;; Also, some transactions represent money that's just been moved from checking to an
 ;; investment account, and don't mean that I've just thrown a few thousand bucks away.
 ;; So when we're calculating spending, we probably won't want to include investment-related transactions.
-;; You get the idea.
 
 (defn make-transaction-filter
   "Takes a `field` string that's a key into a transaction map and a seq of `values` that represent possible values
@@ -53,6 +57,7 @@
           values)))
 
 (def income? (make-transaction-filter "Category" [#"Income" #"Transfer" #"Paycheck"]))
+
 (def ignorable?  (make-transaction-filter "Description" [#"Vanguard"
                                                          #"Check 7.*"
                                                          #"Transfer to CREDIT CARD"
@@ -60,7 +65,7 @@
                                                          #"Vgilifest Gro"]))
 
 (defn credit-card-dupe?
-  "Takes a transaction map and returns `true` if it's a credit card payment, `false` otherwise.
+  "Takes a transaction map and returns `true` if it's a credit card payment, falsy otherwise.
   Those payments are considered as duplicate transactions, since they're rollups of
   lots of other smaller transactions that are also included in the .csv dump."
   [transaction]
@@ -69,7 +74,9 @@
        "Credit Card Payment")))
 
 (defn happened-in-2012? [date]
-  (apply < (map to-long [(date-time 2012 01 01) date (date-time 2012 12 31)])))
+  (apply < (map to-long [(date-time 2012 01 01)
+                         date
+                         (date-time 2012 12 31)])))
 
 (defn set-of [pred coll]
   (into #{} (filter pred coll)))
@@ -90,7 +97,9 @@
 
 (defn group-transactions
   "Takes a seq of transactions and an optional string `field` (\"Description\" by default),
-  returns a map of `{field-value -> transaction-amount}`."
+  returns a map of `{field-value -> transaction-amount}`, where `transaction-amount` is the sum
+  of the corresponding amounts for all `transactions` that shared the same `field-value`.
+  Useful for e.g. grouping all of your Amazon transactions together."
   ([transactions] (group-transactions transactions "Description"))
   ([transactions field]
   (let [grouped (clojure.set/index transactions [field])]

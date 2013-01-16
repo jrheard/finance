@@ -3036,6 +3036,8 @@ financial accounts and information in one place. One of its not-strengths
 is that it isn't always great at answering the kinds of questions I want to ask
 about that data. I'm limited to only ever receiving answers to the questions that
 Mint's engineers get around to answering. This program provides some of those missing answers.</p>
+
+<p>The program expects a Mint transactions .csv dump to exist at <code>resources/transactions.csv</code>.</p>
 </td><td class="codes"></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(ns finance.core
   (:require [clojure.data.csv :as csv]
@@ -3045,12 +3047,15 @@ Mint's engineers get around to answering. This program provides some of those mi
             [clj-time.core :refer [date-time]]
             [clj-time.format :refer [parse formatter]]))</pre></td></tr><tr><td class="docs"><h2>Parsers</h2>
 
-<p>Transactions come in as maps of {string -> string};
-these guys help transform those maps into maps with more usefully typed data.</p>
+<p>Transactions come in as maps like this:</p>
+
+<p><code>{"Account Name" "CREDIT CARD", "Category" "Pharmacy", "Amount" "17.39", "Descripton" "Walgreens", "Date" "1/11/2013"}</code></p>
+
+<p>These parsers help transform those stringy maps into maps with more usefully typed data.</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Takes a string of the format '1/11/2013', returns a DateTime instance.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn parse-date
-  [date-str]
-  (parse (formatter &quot;MM/dd/yyyy&quot;) date-str))</pre></td></tr><tr><td class="docs"><p>Takes a map of {string -> string}, returns a parsed transaction map.</p>
+  [s]
+  (parse (formatter &quot;MM/dd/yyyy&quot;) s))</pre></td></tr><tr><td class="docs"><p>Takes a map of {string -> string}, returns a parsed transaction map.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn parse-transaction
   [transaction]
   (let [field-parsers {&quot;Amount&quot; #(Float/parseFloat %)
@@ -3066,8 +3071,7 @@ marked as "Credit Card Payment".</p>
 
 <p>Also, some transactions represent money that's just been moved from checking to an
 investment account, and don't mean that I've just thrown a few thousand bucks away.
-So when we're calculating spending, we probably won't want to include investment-related transactions.
-You get the idea.</p>
+So when we're calculating spending, we probably won't want to include investment-related transactions.</p>
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Takes a <code>field</code> string that's a key into a transaction map and a seq of <code>values</code> that represent possible values
   that might appear in a transaction map; returns a fn that takes a <code>transaction</code> map and returns truthy if its
   entry for the specified <code>field</code> contained one of the specified <code>values</code>, nil otherwise.</p>
@@ -3076,12 +3080,12 @@ You get the idea.</p>
   (fn [transaction]
     (some #(re-seq % (get transaction field))
           values)))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(def income? (make-transaction-filter &quot;Category&quot; [#&quot;Income&quot; #&quot;Transfer&quot; #&quot;Paycheck&quot;]))
-(def ignorable?  (make-transaction-filter &quot;Description&quot; [#&quot;Vanguard&quot;
+</td><td class="codes"><pre class="brush: clojure">(def income? (make-transaction-filter &quot;Category&quot; [#&quot;Income&quot; #&quot;Transfer&quot; #&quot;Paycheck&quot;]))</pre></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(def ignorable?  (make-transaction-filter &quot;Description&quot; [#&quot;Vanguard&quot;
                                                          #&quot;Check 7.*&quot;
                                                          #&quot;Transfer to CREDIT CARD&quot;
                                                          #&quot;Vgi Prime Mm&quot;
-                                                         #&quot;Vgilifest Gro&quot;]))</pre></td></tr><tr><td class="docs"><p>Takes a transaction map and returns <code>true</code> if it's a credit card payment, <code>false</code> otherwise.
+                                                         #&quot;Vgilifest Gro&quot;]))</pre></td></tr><tr><td class="docs"><p>Takes a transaction map and returns <code>true</code> if it's a credit card payment, falsy otherwise.
   Those payments are considered as duplicate transactions, since they're rollups of
   lots of other smaller transactions that are also included in the .csv dump.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn credit-card-dupe?
@@ -3090,7 +3094,9 @@ You get the idea.</p>
     (= (get transaction &quot;Category&quot;)
        &quot;Credit Card Payment&quot;)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn happened-in-2012? [date]
-  (apply &lt; (map to-long [(date-time 2012 01 01) date (date-time 2012 12 31)])))</pre></td></tr><tr><td class="docs">
+  (apply &lt; (map to-long [(date-time 2012 01 01)
+                         date
+                         (date-time 2012 12 31)])))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn set-of [pred coll]
   (into #{} (filter pred coll)))</pre></td></tr><tr><td class="docs"><p>Takes a seq of transaction maps and returns a list of <code>[income spending]</code>, where
   <code>income</code> is a seq of transactions in which I was given money in 2012, and
@@ -3105,7 +3111,9 @@ You get the idea.</p>
                                                       (credit-card-dupe? %))
                                                  transactions))]
     [income spending]))</pre></td></tr><tr><td class="docs"><p>Takes a seq of transactions and an optional string <code>field</code> ("Description" by default),
-  returns a map of <code>{field-value -&gt; transaction-amount}</code>.</p>
+  returns a map of <code>{field-value -&gt; transaction-amount}</code>, where <code>transaction-amount</code> is the sum
+  of the corresponding amounts for all <code>transactions</code> that shared the same <code>field-value</code>.
+  Useful for e.g. grouping all of your Amazon transactions together.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn group-transactions
   ([transactions] (group-transactions transactions &quot;Description&quot;))
   ([transactions field]

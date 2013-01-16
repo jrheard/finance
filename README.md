@@ -6,6 +6,8 @@ Well, I say "you", but really I just mean "me". I just wrote this because none o
 
 I also wrote it because I wanted to write a program so I could try out [vim-foreplay](https://github.com/tpope/vim-foreplay) and this was the first thing I thought of. This definitely won't accurately report things about your .csv without some code tweaks of your own.
 
+Go ahead and read the [annotated source code](https://github.com/jrheard/finance/blob/master/docs/uberdoc.html).
+
 ## Usage
 
     mkdir resources
