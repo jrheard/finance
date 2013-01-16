@@ -53,7 +53,11 @@
           values)))
 
 (def income? (make-transaction-filter "Category" [#"Income" #"Transfer" #"Paycheck"]))
-(def ignorable? (make-transaction-filter "Description" [#"Vanguard" #"Check 7.*" #"Transfer to CREDIT CARD" #"Vgi Prime Mm" #"Vgilifest Gro"]))
+(def ignorable?  (make-transaction-filter "Description" [#"Vanguard"
+                                                         #"Check 7.*"
+                                                         #"Transfer to CREDIT CARD"
+                                                         #"Vgi Prime Mm"
+                                                         #"Vgilifest Gro"]))
 
 (defn credit-card-dupe?
   "Takes a transaction map and returns `true` if it's a credit card payment, `false` otherwise.
