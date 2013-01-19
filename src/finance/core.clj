@@ -166,11 +166,11 @@
  `{\"Amazon\" 350.10}`. "
   ([transactions] (group-transactions transactions "Description"))
   ([transactions field]
-  (let [grouped (clojure.set/index transactions [field])]
-    (into {}
-          (map (fn [[k transactions]]
-                 [(k field) (reduce + (map #(get % "Amount") transactions))])
-               grouped)))))
+    (let [grouped (clojure.set/index transactions [field])]
+      (into {}
+            (map (fn [[k transactions]]
+                   [(k field) (reduce + (map #(get % "Amount") transactions))])
+                 grouped)))))
 
 (defn sort-transactions
   "Takes a map of grouped transactions, returns a seq of grouped-transaction k/v pairs in descending order by transaction amount.

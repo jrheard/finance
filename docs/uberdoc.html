@@ -3177,11 +3177,11 @@ So when we're calculating spending, we probably won't want to include investment
 </td><td class="codes"><pre class="brush: clojure">(defn group-transactions
   ([transactions] (group-transactions transactions &quot;Description&quot;))
   ([transactions field]
-  (let [grouped (clojure.set/index transactions [field])]
-    (into {}
-          (map (fn [[k transactions]]
-                 [(k field) (reduce + (map #(get % &quot;Amount&quot;) transactions))])
-               grouped)))))</pre></td></tr><tr><td class="docs"><p>Takes a map of grouped transactions, returns a seq of grouped-transaction k/v pairs in descending order by transaction amount.</p>
+    (let [grouped (clojure.set/index transactions [field])]
+      (into {}
+            (map (fn [[k transactions]]
+                   [(k field) (reduce + (map #(get % &quot;Amount&quot;) transactions))])
+                 grouped)))))</pre></td></tr><tr><td class="docs"><p>Takes a map of grouped transactions, returns a seq of grouped-transaction k/v pairs in descending order by transaction amount.</p>
 
 <p>  Here we're doing the same thing from earlier, where we interact with a map's keys and values by mapping an anonymous function over
   it and using destructuring to get at each key and value. Our return value looks like <code>[["Amazon" 350.10] ["Postmates" 123.45]]</code>.</p>
