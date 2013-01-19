@@ -3038,13 +3038,27 @@ about that data. I'm limited to only ever receiving answers to the questions tha
 Mint's engineers get around to answering. This program provides some of those missing answers.</p>
 
 <p>The program expects a Mint transactions .csv dump to exist at <code>resources/transactions.csv</code>.</p>
-</td><td class="codes"></td></tr><tr><td class="docs">
+</td><td class="codes"></td></tr><tr><td class="docs"><p>A Clojure source file starts with an <code>ns</code> declaration. This file's namespace is <code>finance.core</code>
+   because it's in src/finance/core.clj, so we declare that at the start of the declaration. After that,
+   there's a spot for an optional docstring, which it's a good idea to always include.
+   From there on, you've got your imports. When writing your programs, prefer to import libraries using <code>:require</code>,
+   as opposed to <code>:use</code>, which by default behaves like <code>import *</code>.</p>
+
+<p>   Within a <code>:require</code> directive, the <code>:refer</code> directive tells Clojure specifically which functions you'd
+   like to import into your namespace to be made available via unqualified symbols; you can always access
+   the entire namespace's collection of public vars via e.g.  <code>clj-time.coerce/to-date</code>, where the part
+   before the slash is the name of the namespace you're conerned with, and the part after the slash is
+   the var you're interested in. When I say "unqualified symbols", I mean that a directive like
+   <code>(:require [foo.bar :refer [baz]])</code> will make the var <code>baz</code> available via the symbol <code>baz</code>,
+   as opposed to making you have to type <code>foo.bar/baz</code>.</p>
+
+<p>   The <code>:as</code> directive does what you probably expect; if we had done <code>(:require [foo.bar :as bar])</code>, then the namespace's
+   vars would be available by typing e.g. <code>bar/baz</code>.</p>
 </td><td class="codes"><pre class="brush: clojure">(ns finance.core
   (:require [clojure.data.csv :as csv]
             [clojure.java.io :as io]
             [clojure.set]
-            [clj-time.coerce :refer [to-long]]
-            [clj-time.core :refer [date-time]]
+            [clj-time.core :refer [date-time year]]
             [clj-time.format :refer [parse formatter]]))</pre></td></tr><tr><td class="docs"><h2>Parsers</h2>
 
 <p>Transactions come in as maps like this:</p>
@@ -3055,13 +3069,25 @@ Mint's engineers get around to answering. This program provides some of those mi
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Takes a string of the format '1/11/2013', returns a DateTime instance.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn parse-date
   [s]
-  (parse (formatter &quot;MM/dd/yyyy&quot;) s))</pre></td></tr><tr><td class="docs"><p>Takes a map of {string -> string}, returns a parsed transaction map.</p>
+  (parse (formatter &quot;MM/dd/yyyy&quot;) s))</pre></td></tr><tr><td class="docs"><p>Takes a map of {string -> string}, returns a parsed transaction map.
+  A call to <code>(into a-map [[foo bar] [baz quux]])</code> is basically equivalent to a non-side-effecting version of
+  <code>a_dict.update({foo: bar, baz: quux})</code> from python. So in the code above, we're saying: take a map called
+  <code>transaction</code> and, for each k/v pair in <code>field-parsers</code>, run the map's corresponding value through the relevant
+  <code>field-parsers</code> function. That is: if an input map looks like <code>{"Amount" "3.0"}</code>, we'll run <code>Float/parseFloat</code> on
+  that value and our updated map will look like <code>{"Amount" 3.0}</code>.</p>
+
+<p>  This anonymous function that we're mapping over <code>field-parsers</code> is using destructuring: it takes one argument, which
+  is a key-value pair represented by a list with two items, and pulls that list apart via the syntax <code>[k v]</code>. So within
+  body of the anonymous function, <code>k</code> refers to a key from <code>field-parsers</code>, and <code>v</code> refers to the corresponding value.
+  If you ever find yourself reaching for the Clojure equivalent of looping over <code>a_dict.iteritems()</code>, this style of anonymous
+  function is probably what you're looking for.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn parse-transaction
   [transaction]
   (let [field-parsers {&quot;Amount&quot; #(Float/parseFloat %)
                        &quot;Date&quot;    parse-date}]
     (into transaction
-          (map (fn [[k v]] [k (v (get transaction k))]) field-parsers))))</pre></td></tr><tr><td class="docs"><h2>Filters</h2>
+          (map (fn [[k v]] [k (v (transaction k))])
+               field-parsers))))</pre></td></tr><tr><td class="docs"><h2>Filters</h2>
 
 <p>The .csv dump that Mint gives us contains a bunch of transactions.
 Some of them are duplicates - for instance, transactions under the category
@@ -3075,10 +3101,15 @@ So when we're calculating spending, we probably won't want to include investment
 </td><td class="codes"></td></tr><tr><td class="docs"><p>Takes a <code>field</code> string that's a key into a transaction map and a seq of <code>values</code> that represent possible values
   that might appear in a transaction map; returns a fn that takes a <code>transaction</code> map and returns truthy if its
   entry for the specified <code>field</code> contained one of the specified <code>values</code>, nil otherwise.</p>
+
+<p>  Whereas in Python I might have defined a Validator class with defined behavior and had IncomeValidator
+  and IgnorableValidator subclass it with specific data, in Clojure the obvious solution is instead
+  to just use higher-order functions. As a result, this is a function that returns a function, and the returned
+  function is a predicate that takes a map and returns true if it meets the specified criteria, false otherwise.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn make-transaction-filter
   [field values]
   (fn [transaction]
-    (some #(re-seq % (get transaction field))
+    (some #(re-seq % (transaction field))
           values)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def income? (make-transaction-filter &quot;Category&quot; [#&quot;Income&quot; #&quot;Transfer&quot; #&quot;Paycheck&quot;]))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(def ignorable?  (make-transaction-filter &quot;Description&quot; [#&quot;Vanguard&quot;
@@ -3088,17 +3119,32 @@ So when we're calculating spending, we probably won't want to include investment
                                                          #&quot;Vgilifest Gro&quot;]))</pre></td></tr><tr><td class="docs"><p>Takes a transaction map and returns <code>true</code> if it's a credit card payment, falsy otherwise.
   Those payments are considered as duplicate transactions, since they're rollups of
   lots of other smaller transactions that are also included in the .csv dump.</p>
+
+<p>  This function has to perform some more advanced checking than <code>income?</code> and <code>ignorable?</code> do,
+  because it has to first see if the transaction it's given is from the CREDIT CARD account,
+  and then it has to see if its category is "Credit Card Payment".</p>
+
+<p>  Whereas in Python we might have defined another subclass of Validator, here instead we just compose
+  the return values of a couple of higher-order functions. <code>juxt</code> is a function that takes a sequence
+  of functions and then returns a function that, when called, returns a vector containing the results
+  of applying each of those functions to the given input.</p>
+
+<p>  So for example: if transaction is from the CREDIT CARD account but isn't a payment, the call to the
+  function that <code>juxt</code> returned will evaulate to <code>[true false]</code>, and the <code>every?</code> call will then be falsy,
+  indicating that this transaction wasn't a credit card dupe. Simple!</p>
 </td><td class="codes"><pre class="brush: clojure">(defn credit-card-dupe?
   [transaction]
-  (when ((make-transaction-filter &quot;Account Name&quot; [#&quot;CREDIT CARD&quot;]) transaction)
-    (= (get transaction &quot;Category&quot;)
-       &quot;Credit Card Payment&quot;)))</pre></td></tr><tr><td class="docs">
+  (every? identity ((juxt (make-transaction-filter &quot;Account Name&quot; [#&quot;CREDIT CARD&quot;])
+                          (make-transaction-filter &quot;Category&quot; [#&quot;Credit Card Payment&quot;]))
+                    transaction)))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn happened-in-2012? [date]
-  (apply &lt; (map to-long [(date-time 2012 01 01)
-                         date
-                         (date-time 2012 12 31)])))</pre></td></tr><tr><td class="docs">
-</td><td class="codes"><pre class="brush: clojure">(defn set-of [pred coll]
-  (into #{} (filter pred coll)))</pre></td></tr><tr><td class="docs"><p>Takes a seq of transaction maps and returns a list of <code>[income spending]</code>, where
+  (= (year date) 2012))</pre></td></tr><tr><td class="docs"><p>I've found this function to be really useful whenever I have a vector of values and want to end up
+  with the set of all of those values that meet some criteria.</p>
+
+<p>  E.g.: <code>(set-of even? [1 2 3 4 5 6 3 4 2]))</code></p>
+</td><td class="codes"><pre class="brush: clojure">(defn set-of
+  [pred coll]
+  (into #{} (filter pred coll)))</pre></td></tr><tr><td class="docs"><p>Takes a seq of transaction maps and returns a vector of <code>[income spending]</code>, where
   <code>income</code> is a seq of transactions in which I was given money in 2012, and
   <code>spending</code> is a seq of transactions in which I spent money in 2012.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn filter-income-from-spending
@@ -3114,29 +3160,61 @@ So when we're calculating spending, we probably won't want to include investment
   returns a map of <code>{field-value -&gt; transaction-amount}</code>, where <code>transaction-amount</code> is the sum
   of the corresponding amounts for all <code>transactions</code> that shared the same <code>field-value</code>.
   Useful for e.g. grouping all of your Amazon transactions together.</p>
+
+<p>  This is the first function that we've seen that takes advantage of the fact that functions can
+  define multiple arities. There's a version of group-transactions that takes only one parameter,
+  and a version that takes two. You'll notice that the one-parameter version just fills in a default value
+  and delegates to the two-parameter version; this is a pretty common Clojure idiom for specifying default
+  values for parameters.</p>
+
+<p>  The first thing this function does is that it calls <code>clojure.set/index</code>, which is pretty similar to
+  <code>yelp_lib.grouping.group_by_key</code>. At that point, <code>grouped</code> looks like
+  <code>{{"Description" "Amazon"} [list-of-amazon-transactions]}</code>, etc.</p>
+
+<p>  After that, we basically just map over <code>grouped</code> to generate a series of 2-item lists like <code>["Amazon" 350.10]</code>,
+  and then we stuff all of those 2-item lists into an empty map. Our return value is a map of the form
+ <code>{"Amazon" 350.10}</code>. </p>
 </td><td class="codes"><pre class="brush: clojure">(defn group-transactions
   ([transactions] (group-transactions transactions &quot;Description&quot;))
   ([transactions field]
   (let [grouped (clojure.set/index transactions [field])]
     (into {}
-          (map (fn [[k ts]]
-                 [(get k field) (reduce + (map #(get % &quot;Amount&quot;) ts))])
+          (map (fn [[k transactions]]
+                 [(k field) (reduce + (map #(get % &quot;Amount&quot;) transactions))])
                grouped)))))</pre></td></tr><tr><td class="docs"><p>Takes a map of grouped transactions, returns a seq of grouped-transaction k/v pairs in descending order by transaction amount.</p>
+
+<p>  Here we're doing the same thing from earlier, where we interact with a map's keys and values by mapping an anonymous function over
+  it and using destructuring to get at each key and value. Our return value looks like <code>[["Amazon" 350.10] ["Postmates" 123.45]]</code>.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn sort-transactions
   [grouped-transactions]
   (reverse (sort-by (fn [[k v]] v) grouped-transactions)))</pre></td></tr><tr><td class="docs"><p>Takes a map of grouped transactions, returns the sum of all of the transactions' amounts.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn sum-transactions
   [grouped-transactions]
   (reduce + (map second grouped-transactions)))</pre></td></tr><tr><td class="docs"><h2>I/O</h2>
-</td><td class="codes"></td></tr><tr><td class="docs"><p>Returns a seq of parsed transaction maps based on the contents of resources/transactions.csv.</p>
+</td><td class="codes"></td></tr><tr><td class="docs">
+</td><td class="codes"><pre class="brush: clojure">(defn read-csv [filename]
+  (with-open [f (io/reader (io/resource filename))]
+    (doall (csv/read-csv f))))</pre></td></tr><tr><td class="docs"><p>Returns a seq of parsed transaction maps based on the contents of resources/transactions.csv.</p>
+
+<p>  The most interesting thing that's going on here is that we're assembling a vector by using the <code>reduce</code> function.
+  <code>reduce</code> takes a function, an optional initial value, and a collection <code>coll</code> to operate on. The specified function
+  has to take two parameters and return a value; the first parameter is an "accumulator" that basically represents
+  "what we've got so far", and the second parameter is a value of <code>coll</code> that we want to somehow update the accumulator with.</p>
+
+<p>  Here, we're just starting with the empty list and using the function <code>conj</code> (for "conjoin") to append a new item on to the accumulator.
+  That's how you assemble a list in immuability-land; not too complicated.</p>
+
+<p>  The list we're assembling contains values that look like <code>(zipmap (first lines) another-line)</code>. <code>zipmap</code>'s just a function that
+  takes two vectors and returns a map, e.g. <code>(zipmap [1 2 3] [:a :b :c])</code> yields <code>{1 :a 2 :b 3 :c}</code>. We're using it here to
+  turn each line of the .csv into a Clojure map, where the keys are values from the header (the first line of the .csv) and the
+  values are the actual values each line contains.</p>
 </td><td class="codes"><pre class="brush: clojure">(defn get-transactions
   []
-  (let [lines (with-open [f (io/reader (io/resource &quot;transactions.csv&quot;))]
-                (doall (csv/read-csv f)))
-        header (first lines)
-        lines (rest lines)]
+  (let [lines (read-csv &quot;transactions.csv&quot;)]
     (map parse-transaction
-         (reduce #(conj % (zipmap header %2)) [] lines))))</pre></td></tr><tr><td class="docs">
+         (reduce #(conj % (zipmap (first lines) %2))
+                 []
+                 (rest lines)))))</pre></td></tr><tr><td class="docs">
 </td><td class="codes"><pre class="brush: clojure">(defn -main [&amp; args]
   (let [[income spending] (filter-income-from-spending (get-transactions))]
     (println (apply -
